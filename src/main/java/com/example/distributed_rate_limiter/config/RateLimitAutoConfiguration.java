@@ -11,6 +11,7 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
 import org.springframework.data.redis.core.StringRedisTemplate;
 
 /**
@@ -22,26 +23,6 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 @EnableConfigurationProperties(RateLimitProperties.class)
 @ConditionalOnProperty(prefix = "ratelimiter", name = "enabled", havingValue = "true", matchIfMissing = true)
 public class RateLimitAutoConfiguration {
-
-    /**
-     * Configures the Redis-based strategy.
-     * Only activates if store-type is 'redis' (default) and StringRedisTemplate is on the classpath.
-     */
-    @Bean
-    @ConditionalOnProperty(prefix = "ratelimiter", name = "store-type", havingValue = "redis")
-    @ConditionalOnClass(StringRedisTemplate.class)
-    public RateLimitStrategy redisRateLimitStrategy(StringRedisTemplate redisTemplate) {
-        return new RedisRateLimitStrategy(redisTemplate);
-    }
-
-    /**
-     * Configures the In-Memory strategy for standalone/local development.
-     */
-    @Bean
-    @ConditionalOnProperty(prefix = "ratelimiter", name = "store-type", havingValue = "in_memory", matchIfMissing = true)
-    public RateLimitStrategy inMemoryRateLimitStrategy() {
-        return new InMemoryRateLimitStrategy();
-    }
 
     @Bean
     @ConditionalOnMissingBean
@@ -55,5 +36,30 @@ public class RateLimitAutoConfiguration {
                                            RateLimitProperties properties,
                                            SpelKeyResolver keyResolver) {
         return new RateLimitAspect(strategy, properties, keyResolver);
+    }
+
+    @Bean
+    @ConditionalOnMissingBean
+    public RateLimitExceptionHandler rateLimitExceptionHandler() {
+        return new RateLimitExceptionHandler();
+    }
+
+    @Configuration(proxyBeanMethods = false)
+    @ConditionalOnProperty(prefix = "ratelimiter", name = "store-type", havingValue = "redis")
+    @ConditionalOnClass(name = "org.springframework.data.redis.core.StringRedisTemplate")
+    static class RedisConfiguration {
+        @Bean
+        public RateLimitStrategy redisRateLimitStrategy(StringRedisTemplate redisTemplate) {
+            return new RedisRateLimitStrategy(redisTemplate);
+        }
+    }
+
+    @Configuration(proxyBeanMethods = false)
+    @ConditionalOnProperty(prefix = "ratelimiter", name = "store-type", havingValue = "in_memory", matchIfMissing = true)
+    static class InMemoryConfiguration {
+        @Bean
+        public RateLimitStrategy inMemoryRateLimitStrategy() {
+            return new InMemoryRateLimitStrategy();
+        }
     }
 }
