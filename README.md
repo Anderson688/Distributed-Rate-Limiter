@@ -75,6 +75,62 @@ public class PaymentController {
 }
 ```
 
+## Class-Level vs. Method-Level Limiting
+
+To keep your code clean and DRY (Don't Repeat Yourself), you can apply the `@RateLimit` annotation at either the **Class level**, the **Method level**, or both!
+
+### 1. Class-Level (Protect all endpoints)
+If all endpoints in a controller share the same rate limit policy, simply annotate the class. Every API inside will get its own isolated rate-limit bucket based on this configuration.
+
+### 2. Method-Level Override (Surgical precision)
+If you annotate a specific method, its configuration will **completely override** the class-level annotation. This is perfect for when 90% of your controller is standard traffic, but one specific endpoint (like a login or payment route) needs stricter limits.
+
+### 3. Smart Fallbacks
+You do not have to define every parameter in the annotation. If you omit a parameter (like `timeUnit` or `strategy`), the library will automatically fall back to the default settings you defined in your `application.yml`.
+
+### Example Hierarchy:
+
+```java
+import com.example.distributed_rate_limiter.annotation.RateLimit;
+import org.springframework.web.bind.annotation.*;
+import java.util.concurrent.TimeUnit;
+
+// 1. CLASS LEVEL: All APIs here allow 50 requests per minute by default
+@RateLimit(limit = 50, window = 1, timeUnit = TimeUnit.MINUTES)
+@RestController
+@RequestMapping("/api/users")
+public class UserController {
+
+    // Inherits the Class-level limit (50 req / 1 min)
+    @GetMapping("/profile")
+    public String getProfile() {
+        return "User Profile";
+    }
+
+    // Inherits the Class-level limit (50 req / 1 min)
+    @GetMapping("/settings")
+    public String getSettings() {
+        return "User Settings";
+    }
+
+    // 2. METHOD OVERRIDE: This highly sensitive endpoint overrides the class 
+    // and strictly limits traffic to 3 requests per hour!
+    @RateLimit(limit = 3, window = 1, timeUnit = TimeUnit.HOURS)
+    @PostMapping("/password-reset")
+    public String resetPassword() {
+        return "Password reset email sent";
+    }
+
+    // 3. SMART FALLBACK: Only defines the limit. The window, timeUnit, 
+    // and strategy will seamlessly fall back to your application.yml defaults!
+    @RateLimit(limit = 500)
+    @GetMapping("/public-data")
+    public String getPublicData() {
+        return "Public Data";
+    }
+}
+```
+
 ## Dynamic Key Resolution (SpEL)
 
 By default, the rate limiter tracks usage based on the client's IP Address (`#request.remoteAddr`). However, you can rate-limit based on *anything* in the incoming HTTP request using Spring Expression Language (SpEL).
