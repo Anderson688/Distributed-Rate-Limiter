@@ -1,7 +1,7 @@
 -- KEYS[1]: The unique identifier
 -- ARGV[1]: Max requests allowed (limit)
 -- ARGV[2]: Window duration in milliseconds
--- ARGV[3]: Current timestamp (unused in basic fixed window but kept for signature consistency)
+-- ARGV[3]: A unique request ID (UUID) (unused in basic fixed window but kept for signature consistency)
 
 local key = KEYS[1]
 local limit = tonumber(ARGV[1])

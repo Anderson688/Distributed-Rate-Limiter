@@ -1,12 +1,16 @@
 -- KEYS[1]: The unique identifier
 -- ARGV[1]: Bucket capacity (limit)
 -- ARGV[2]: Time to refill the entire bucket in ms (window)
--- ARGV[3]: Current timestamp in milliseconds
+-- ARGV[3]: A unique request ID (UUID) (unused in basic token bucket but kept for signature consistency)
 
 local key = KEYS[1]
 local capacity = tonumber(ARGV[1])
 local refill_time_total = tonumber(ARGV[2])
-local current_ms = tonumber(ARGV[3])
+
+-- Get the exact time from the Redis server's clock
+local redis_time = redis.call('TIME')
+-- redis_time[1] is seconds, redis_time[2] is microseconds
+local current_ms = math.floor((tonumber(redis_time[1]) * 1000) + (tonumber(redis_time[2]) / 1000))
 
 -- Time required to generate a single token
 local time_per_token = refill_time_total / capacity

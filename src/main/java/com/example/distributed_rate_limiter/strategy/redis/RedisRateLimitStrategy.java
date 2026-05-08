@@ -9,10 +9,7 @@ import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.data.redis.core.script.RedisScript;
 
 import java.time.Instant;
-import java.util.Collections;
-import java.util.EnumMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -60,7 +57,7 @@ public class RedisRateLimitStrategy implements RateLimitStrategy {
         }
 
         long windowMillis = unit.toMillis(window);
-        long currentTimeMillis = Instant.now().toEpochMilli();
+        String uniqueRequestId = UUID.randomUUID().toString();
 
         try {
             // 2. Execute the selected script
@@ -69,7 +66,7 @@ public class RedisRateLimitStrategy implements RateLimitStrategy {
                     Collections.singletonList(key),
                     String.valueOf(limit),
                     String.valueOf(windowMillis),
-                    String.valueOf(currentTimeMillis)
+                    uniqueRequestId
             );
 
             return parseResult(result);
