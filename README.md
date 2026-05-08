@@ -259,21 +259,30 @@ ratelimiter:
   default-strategy: fixed_window
 ```
 
-## Performance & Benchmarks
+## Performance & Overhead
 
-This library is designed for ultra-low overhead. Because the actual rate-limiting state is pushed down to the storage layer via atomic Lua scripts, the Java application itself remains completely unblocked.
+This library is designed for high-concurrency environments and introduces near-zero latency to the Tomcat event loop. Performance is continually verified using the **Java Microbenchmark Harness (JMH)** to bypass JIT compilation and JVM warmup inconsistencies.
 
-### 1. Library Latency Overhead
-The internal overhead of this library (AOP interception, annotation reflection, and SpEL parsing) is negligible. **It does not block the Tomcat event loop.**
+### JMH Microbenchmark Results
+The internal overhead of the library (AOP interception, Annotation reflection, SpEL AST caching, and In-Memory Token Bucket math) is strictly measured without network RTT.
 
-* **Average Overhead (In-Memory / Caffeine):** `< 0.1 ms` per request.
-* **Average Overhead (Redis):** `< 0.2 ms` per request *(excluding Redis network RTT).*
-* *Note: SpEL expressions are cached internally after the first evaluation to ensure zero parsing penalties on subsequent requests.*
+| Benchmark | Mode | Cnt | Score | Error | Units |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| `benchmarkLibraryOverhead` | avgt | 5 | **20.910** | ± 6.659 | us/op |
 
-### 2. Throughput & Scalability (Redis)
+* **Average Overhead:** `~0.02 milliseconds` (20.9 microseconds) per request.
+* **SpEL Optimization:** The `SpelKeyResolver` caches the Abstract Syntax Tree (AST) of parsed expressions in a `ConcurrentHashMap`. After the first execution, parsing overhead drops to zero.
+
+### Running the Benchmarks Locally
+To verify these numbers on your own hardware, clone the repository and execute the benchmark profile (this process takes about 3-5 minutes to complete JIT warmup iterations):
+```bash
+./mvnw clean test -P benchmark
+```
+
+### Throughput & Scalability (Redis)
 When using the `redis` store type, maximum throughput is dictated entirely by your network I/O, connection pool settings (Lettuce/Jedis), and your Redis topology.
 
-Below is an approximate throughput matrix demonstrating how the library scales under load (Tested using `wrk` with 400 concurrent connections):
+Below is an approximate throughput matrix demonstrating how the library scales under load (Estimated for bare-metal Linux / AWS EC2 deployments):
 
 | Redis Topology | Scenario | Est. Max RPS | Primary Bottleneck |
 | :--- | :--- | :--- | :--- |
@@ -282,6 +291,25 @@ Below is an approximate throughput matrix demonstrating how the library scales u
 | **3-Node Cluster** | Global Limit (All traffic hits 1 key) | ~25,000 - 30,000 | Hash Slot constraint (Single Master Node) |
 | **3-Node Cluster**| Unique Keys (e.g., Limit by IP) | 100,000+ (Scales Linearly) | Network Bandwidth |
 
+> **Note on Local Benchmarking:** If you run these load tests locally using Docker Desktop on macOS, your maximum throughput will bottleneck around **~18,000 - 20,000 RPS** across all scenarios. This is a known physical limit of the Docker macOS virtualized network bridge, not a limitation of the library or Redis.
+
 **Scaling Advice for Enterprise Clients:**
 1. **Connection Pooling:** Ensure your Spring Boot `spring.data.redis.lettuce.pool.max-active` is set high enough to prevent Tomcat thread starvation under heavy load.
 2. **Key Distribution:** To take advantage of a Redis Cluster, rate-limit by unique identifiers (`#request.remoteAddr` or `#request.getHeader('X-User-ID')`). This allows Redis to shard the Lua script executions across multiple master nodes.
+
+### Running the Load Tests Locally
+To verify the system architecture bottlenecks yourself, you can use the included Docker Compose load-testing environment.
+
+1. Ensure the library is installed locally: `mvn clean install`
+2. Spin up the App Server and Redis containers:
+   ```bash
+   docker-compose up -d --build
+   ```
+3. Test Scenario 1 (Hot Key Bottleneck):
+   ```bash
+   docker-compose run --rm load-generator sh -c "apk add --no-cache wrk && wrk -t12 -c400 -d30s http://app-server:8080/api/global-limited"
+   ```
+4. Test Scenario 2 (Distributed Scaling via SpEL):
+   ```bash
+   docker-compose run --rm load-generator sh -c "apk add --no-cache wrk && echo 'request = function() local uid = math.random(1, 1000000); headers = {}; headers[\"X-User-ID\"] = \"user_\" .. uid; return wrk.format(nil, nil, headers) end' > /tmp/random_user.lua && wrk -t12 -c400 -d30s -s /tmp/random_user.lua http://app-server:8080/api/user-limited"
+   ```

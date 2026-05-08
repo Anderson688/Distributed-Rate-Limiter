@@ -1,0 +1,21 @@
+server:
+  port: 8080
+
+spring:
+  data:
+    redis:
+      host: redis-host  # Matches the service name in docker-compose
+      port: 6379
+      lettuce:
+        pool:
+          # IMPORTANT: Scale this with your concurrency (-c400 in wrk)
+          max-active: 500
+          max-idle: 100
+          min-idle: 50
+          max-wait: 2000ms
+
+# Your Library Configuration
+ratelimiter:
+  enabled: true
+  store-type: redis # Activates RedisRateLimitStrategy
+  fail-open: true   # Ensures API stays up if Redis has a hiccup
